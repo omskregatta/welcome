@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Обратный отсчёт события</title>
+<style>
+  :root {
+    --accent:#ff9800;
+    --primary:#2196f3;
+    --bg-dark:rgba(0,0,0,0.55);
+    --bg-darker:rgba(0,0,0,0.7);
+  }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; font-family: Inter, system-ui, Arial, sans-serif; color:#fff; background:#000; }
+  .bg { position:fixed; inset:0; background-size:cover; background-position:center; z-index:-2; transition: background-image .6s ease-in-out, transform .2s ease; }
+  .vignette { position:fixed; inset:0; background: radial-gradient(ellipse at center, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.8) 100%); z-index:-1; }
+  .center { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; padding:24px; }
+  .card { width:min(92vw, 560px); background:var(--bg-dark); backdrop-filter: blur(6px); border:1px solid rgba(255,255,255,0.08); box-shadow: 0 20px 40px rgba(0,0,0,0.45); border-radius:14px; padding:18px 18px 14px; }
+  .row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .row-3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
+  label { font-size:14px; opacity:.9; display:block; margin:8px 0 6px; text-align:left; }
+  input[type="text"], input[type="datetime-local"], select {
+    width:100%; padding:12px 12px; border:none; border-radius:10px; background: rgba(255,255,255,0.1);
+    color:#fff; outline:none; font-size:15px;
+  }
+  input[type="file"] { width:100%; color:#fff; font-size:14px; }
+  .btn { width:100%; padding:12px 14px; border:none; border-radius:10px; cursor:pointer; font-weight:700; font-size:16px; }
+  .btn-accent { background:var(--accent); color:#101010; }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-ghost { background:rgba(255,255,255,0.12); color:#fff; }
+  .toolbar { display:flex; gap:10px; margin-top:10px; }
+  .title { font-size: clamp(28px, 5.5vw, 46px); margin: 6px 0 2px; font-weight:800; letter-spacing:.2px; }
+  .loc { font-size: clamp(16px, 2.6vw, 20px); opacity:.95; margin-bottom: 14px; }
+  .count { font-size: clamp(34px, 9.5vw, 86px); font-weight:900; letter-spacing: 2px; line-height:1.1; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.04)} 100%{transform:scale(1)} }
+  .hidden { display:none !important; }
+  .topbar { position:fixed; top:14px; right:14px; display:flex; gap:10px; }
+  .pill { background:var(--bg-darker); border:1px solid rgba(255,255,255,0.08); padding:8px 12px; border-radius:999px; font-size:14px; }
+  .footer { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .notice { font-size:12px; opacity:.8; margin-top:6px; text-align:left; }
+  @media (max-width:520px) {
+    .row, .row-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div id="bg" class="bg"></div>
+  <div class="vignette"></div>
+
+  <!-- Панель настройки -->
+  <div id="setup" class="center">
+    <div class="card">
+      <h2 style="margin:0 0 10px; font-weight:800;">Настройка события</h2>
+      <div class="row">
+        <div>
+          <label>Название</label>
+          <input id="eventName" type="text" placeholder="Например, Конференция X">
+        </div>
+        <div>
+          <label>Место</label>
+          <input id="eventLocation" type="text" placeholder="Город, площадка">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Дата и время</label>
+          <input id="eventDate" type="datetime-local">
+        </div>
+        <div>
+          <label>Фон: загрузить</label>
+          <input id="bgUpload" type="file" accept="image/*">
+          <div class="notice">Можно выбрать пресет ниже.</div>
+        </div>
+      </div>
+      <label>Или выбрать пресет фона</label>
+      <div class="row-3">
+        <button class="btn btn-ghost" data-preset="city">Город</button>
+        <button class="btn btn-ghost" data-preset="mountain">Горы</button>
+        <button class="btn btn-ghost" data-preset="gradient">Градиент</button>
+      </div>
+      <div class="toolbar">
+        <button id="startBtn" class="btn btn-accent">Запустить отсчёт</button>
+        <button id="previewBtn" class="btn btn-primary">Предпросмотр</button>
+      </div>
+      <div class="notice">Подсказка: после запуска появятся кнопки «Сохранить в .ics» и «Google Календарь».</div>
+    </div>
+  </div>
+
+  <!-- Экран отсчёта -->
+  <div id="live" class="center hidden" aria-live="polite">
+    <div class="topbar">
+      <button id="editBtn" class="pill">Изменить</button>
+    </div>
+    <div>
+      <div id="title" class="title">Моё событие</div>
+      <div id="location" class="loc">Место проведения</div>
+      <div id="countdown" class="count">00д 00ч 00м 00с</div>
+      <div class="footer">
+        <button id="icsBtn" class="btn btn-primary">Сохранить в .ics</button>
+        <button id="gcalBtn" class="btn btn-accent">Google Календарь</button>
+        <button id="shareBtn" class="btn btn-ghost">Поделиться</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Состояние
+  let targetDate = null;
+  let eventTitle = '';
+  let eventLocation = '';
+
+  const $ = id => document.getElementById(id);
+  const bgEl = $('bg');
+  const titleEl = $('title');
+  const locEl = $('location');
+  const countdownEl = $('countdown');
+
+  // Пресеты фона (без внешних загрузок)
+  const presets = {
+    city: "linear-gradient(0deg, rgba(0,0,0,.35), rgba(0,0,0,.35)), url('data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop stop-color='#0f172a' offset='0'/><stop stop-color='#1f2937' offset='1'/></linearGradient></defs><rect width='100%' height='100%' fill='url(#g)'/><g fill='rgba(255,255,255,0.08)'><rect x='80' y='520' width='220' height='280'/><rect x='350' y='460' width='180' height='340'/><rect x='560' y='500' width='280' height='300'/><rect x='880' y='480' width='220' height='320'/><rect x='1130' y='540' width='260' height='260'/></g></svg>`) + "')",
+    mountain: "linear-gradient(0deg, rgba(0,0,0,.30), rgba(0,0,0,.30)), url('data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'><defs><linearGradient id='a' x1='0' y1='0' x2='1' y2='1'><stop stop-color='#0b1020' offset='0'/><stop stop-color='#12213f' offset='1'/></linearGradient></defs><rect width='100%' height='100%' fill='url(#a)'/><g fill='rgba(255,255,255,0.08)'><path d='M0 700 L300 420 L520 700 Z'/><path d='M420 700 L780 360 L1080 700 Z'/><path d='M880 700 L1240 480 L1600 700 Z'/></g></svg>`) + "')",
+    gradient: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 45%, #312e81 100%)"
+  };
+
+  // Навешиваем пресеты
+  document.querySelectorAll('[data-preset]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      const key = e.currentTarget.getAttribute('data-preset');
+      bgEl.style.backgroundImage = presets[key] || presets.gradient;
+    });
+  });
+
+  // Загрузка собственного фона
+  $('bgUpload').addEventListener('change', (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => { bgEl.style.backgroundImage = `url(${ev.target.result})`; };
+    reader.readAsDataURL(file);
+  });
+
+  // Предпросмотр (не запускает таймер)
+  $('previewBtn').addEventListener('click', ()=>{
+    eventTitle = $('eventName').value || 'Моё событие';
+    eventLocation = $('eventLocation').value || '';
+    titleEl.textContent = eventTitle;
+    locEl.textContent = eventLocation;
+    $('setup').classList.add('hidden');
+    $('live').classList.remove('hidden');
+  });
+
+  // Запуск отсчёта
+  $('startBtn').addEventListener('click', ()=>{
+    const dateInput = $('eventDate').value;
+    if (!dateInput) { alert('Выберите дату и время'); return; }
+    targetDate = new Date(dateInput);
+    eventTitle = $('eventName').value || 'Моё событие';
+    eventLocation = $('eventLocation').value || '';
+    titleEl.textContent = eventTitle;
+    locEl.textContent = eventLocation;
+    $('setup').classList.add('hidden');
+    $('live').classList.remove('hidden');
+    saveState();
+  });
+
+  // Редактировать
+  $('editBtn').addEventListener('click', ()=>{
+    $('live').classList.add('hidden');
+    $('setup').classList.remove('hidden');
+  });
+
+  // Таймер
+  function tick(){
+    if (!targetDate) return;
+    const now = Date.now();
+    const diff = +targetDate - now;
+    if (diff <= 0){
+      countdownEl.textContent = 'Событие началось!';
+      return;
+    }
+    const d = Math.floor(diff/86400000);
+    const h = Math.floor(diff%86400000/3600000);
+    const m = Math.floor(diff%3600000/60000);
+    const s = Math.floor(diff%60000/1000);
+    countdownEl.textContent = `${d}д ${h}ч ${m}м ${s}с`;
+  }
+  setInterval(tick, 1000);
+
+  // Параллакс (мышь/акселерометр)
+  function parallax(xRatio, yRatio){
+    const x = (xRatio - 0.5) * 10;
+    const y = (yRatio - 0.5) * 10;
+    bgEl.style.backgroundPosition = `${50 - x}% ${50 - y}%`;
+  }
+  document.addEventListener('mousemove', e => parallax(e.clientX / innerWidth, e.clientY / innerHeight));
+  if (window.DeviceOrientationEvent) {
+    window.addEventListener('deviceorientation', e=>{
+      const x = (e.gamma || 0) / 60 + 0.5;
+      const y = (e.beta || 0) / 90 + 0.5;
+      parallax(Math.max(0, Math.min(1, x)), Math.max(0, Math.min(1, y)));
+    });
+  }
+
+  // Календарь: .ics
+  $('icsBtn').addEventListener('click', ()=>{
+    if (!targetDate){ alert('Сначала запустите отсчёт'); return; }
+    const start = new Date(targetDate);
+    const end = new Date(targetDate.getTime() + 60*60*1000);
+    const fmt = d => d.toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z');
+    const ics =
+`BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//EventCountdown//RU//EN
+BEGIN:VEVENT
+UID:${Date.now()}@local
+SUMMARY:${eventTitle}
+DTSTART:${fmt(start)}
+DTEND:${fmt(end)}
+LOCATION:${eventLocation}
+END:VEVENT
+END:VCALENDAR`;
+    const blob = new Blob([ics], {type:'text/calendar;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${eventTitle.replace(/\s+/g,'_')}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Календарь: Google
+  $('gcalBtn').addEventListener('click', ()=>{
+    if (!targetDate){ alert('Сначала запустите отсчёт'); return; }
+    const start = new Date(targetDate);
+    const end = new Date(targetDate.getTime() + 60*60*1000);
+    const toUTC = d => d.toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z');
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: eventTitle,
+      dates: `${toUTC(start)}/${toUTC(end)}`,
+      location: eventLocation,
+      details: 'Добавлено со страницы обратного отсчёта'
+    });
+    const href = `https://www.google.com/calendar/render?${params.toString()}`;
+    window.open(href, '_blank', 'noopener');
+  });
+
+  // Поделиться (Web Share API)
+  $('shareBtn').addEventListener('click', async ()=>{
+    if (navigator.share){
+      try {
+        await navigator.share({
+          title: eventTitle || 'Событие',
+          text: 'Приглашаю на событие',
+          url: location.href
+        });
+      } catch(e){}
+    } else {
+      navigator.clipboard.writeText(location.href);
+      alert('Ссылка скопирована в буфер обмена');
+    }
+  });
+
+  // Локальное сохранение состояния (чтобы при перезагрузке не терять)
+  function saveState(){
+    const state = {
+      bg: bgEl.style.backgroundImage,
+      title: eventTitle,
+      location: eventLocation,
+      date: targetDate ? targetDate.toISOString() : null
+    };
+    localStorage.setItem('countdown_state', JSON.stringify(state));
+  }
+  function restoreState(){
+    try{
+      const raw = localStorage.getItem('countdown_state');
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.bg) bgEl.style.backgroundImage = s.bg;
+      if (s.title) titleEl.textContent = s.title, eventTitle = s.title;
+      if (s.location) locEl.textContent = s.location, eventLocation = s.location;
+      if (s.date) targetDate = new Date(s.date), $('setup').classList.add('hidden'), $('live').classList.remove('hidden');
+    } catch(e){}
+  }
+  restoreState();
+  window.addEventListener('beforeunload', saveState);
+</script>
+</body>
+</html>
